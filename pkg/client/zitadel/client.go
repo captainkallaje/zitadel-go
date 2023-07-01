@@ -1,8 +1,8 @@
 package zitadel
 
 import (
-	"crypto/x509"
 	"crypto/tls"
+	"crypto/x509"
 	"strings"
 
 	"github.com/zitadel/oidc/pkg/client/profile"
@@ -20,6 +20,7 @@ type Connection struct {
 	scopes                []string
 	orgID                 string
 	insecure              bool
+	skipHostVerify        bool
 	unaryInterceptors     []grpc.UnaryClientInterceptor
 	streamInterceptors    []grpc.StreamClientInterceptor
 	*grpc.ClientConn
@@ -52,7 +53,7 @@ func NewConnection(issuer, api string, scopes []string, options ...Option) (*Con
 		),
 	}
 
-	opt, err := transportOption(c.api, c.insecure)
+	opt, err := transportOption(c.api, c.insecure, c.skipHostVerify)
 	if err != nil {
 		return nil, err
 	}
@@ -82,18 +83,19 @@ func (c *Connection) setInterceptors(issuer, orgID string, scopes []string, jwtP
 	return nil
 }
 
-func transportOption(api string, insecure bool) (grpc.DialOption, error) {
+func transportOption(api string, insecure, skipHostVerify bool) (grpc.DialOption, error) {
 	if insecure {
 		return grpc.WithInsecure(), nil
 	}
-	certs, err := transportCredentials(api)
+
+	certs, err := transportCredentials(api, skipHostVerify)
 	if err != nil {
 		return nil, err
 	}
 	return grpc.WithTransportCredentials(certs), nil
 }
 
-func transportCredentials(api string) (credentials.TransportCredentials, error) {
+func transportCredentials(api string, skipHostVerify bool) (credentials.TransportCredentials, error) {
 	ca, err := x509.SystemCertPool()
 	if err != nil {
 		return nil, err
@@ -103,12 +105,12 @@ func transportCredentials(api string) (credentials.TransportCredentials, error) 
 	}
 
 	servernameWithoutPort := strings.Split(api, ":")[0]
-	return credentials.NewTLS(&tls.Config{ServerName: servernameWithoutPort, RootCAs: ca, InsecureSkipVerify: true}), nil
+	return credentials.NewTLS(&tls.Config{ServerName: servernameWithoutPort, RootCAs: ca, InsecureSkipVerify: skipHostVerify}), nil
 }
 
 type Option func(*Connection) error
 
-//WithCustomURL replaces the standard issuer (https://issuer.zitadel.ch) and api endpoint (api.zitadel.ch:443)
+// WithCustomURL replaces the standard issuer (https://issuer.zitadel.ch) and api endpoint (api.zitadel.ch:443)
 func WithCustomURL(issuer, api string) func(*Connection) error {
 	return func(client *Connection) error {
 		client.issuer = issuer
@@ -117,10 +119,10 @@ func WithCustomURL(issuer, api string) func(*Connection) error {
 	}
 }
 
-//WithKeyPath sets the path to the key.json used for the authentication
-//if not set env var ZITADEL_KEY_PATH will be used
+// WithKeyPath sets the path to the key.json used for the authentication
+// if not set env var ZITADEL_KEY_PATH will be used
 //
-//Deprecated: use WithJWTProfileTokenSource(middleware.JWTProfileFromPath(keyPath)) instead
+// Deprecated: use WithJWTProfileTokenSource(middleware.JWTProfileFromPath(keyPath)) instead
 func WithKeyPath(keyPath string) func(*Connection) error {
 	return func(client *Connection) error {
 		client.jwtProfileTokenSource = func(issuer string, scopes []string) (oauth2.TokenSource, error) {
@@ -130,8 +132,8 @@ func WithKeyPath(keyPath string) func(*Connection) error {
 	}
 }
 
-//WithJWTProfileTokenSource sets the provider used for the authentication
-//if not set, the key file will be read from the path set in env var ZITADEL_KEY_PATH
+// WithJWTProfileTokenSource sets the provider used for the authentication
+// if not set, the key file will be read from the path set in env var ZITADEL_KEY_PATH
 func WithJWTProfileTokenSource(provider middleware.JWTProfileTokenSource) func(*Connection) error {
 	return func(client *Connection) error {
 		client.jwtProfileTokenSource = provider
@@ -139,8 +141,8 @@ func WithJWTProfileTokenSource(provider middleware.JWTProfileTokenSource) func(*
 	}
 }
 
-//WithOrgID sets the organization context (where the api calls are executed)
-//if not set the resource owner (organisation) of the calling user will be used
+// WithOrgID sets the organization context (where the api calls are executed)
+// if not set the resource owner (organisation) of the calling user will be used
 func WithOrgID(orgID string) func(*Connection) error {
 	return func(client *Connection) error {
 		client.orgID = orgID
@@ -148,8 +150,8 @@ func WithOrgID(orgID string) func(*Connection) error {
 	}
 }
 
-//WithInsecure disables transport security for the client connection
-//use only when absolutely necessary (local development)
+// WithInsecure disables transport security for the client connection
+// use only when absolutely necessary (local development)
 func WithInsecure() func(*Connection) error {
 	return func(client *Connection) error {
 		client.insecure = true
@@ -157,7 +159,16 @@ func WithInsecure() func(*Connection) error {
 	}
 }
 
-//WithUnaryInterceptors adds non ZITADEL specific interceptors to the connection
+// WithSkipHostVerify disables transport security host verification for the client connection
+// use only when absolutely necessary (local development)
+func WithSkipHostVerify() func(*Connection) error {
+	return func(client *Connection) error {
+		client.skipHostVerify = true
+		return nil
+	}
+}
+
+// WithUnaryInterceptors adds non ZITADEL specific interceptors to the connection
 func WithUnaryInterceptors(interceptors ...grpc.UnaryClientInterceptor) func(*Connection) error {
 	return func(client *Connection) error {
 		client.unaryInterceptors = append(client.unaryInterceptors, interceptors...)
@@ -165,7 +176,7 @@ func WithUnaryInterceptors(interceptors ...grpc.UnaryClientInterceptor) func(*Co
 	}
 }
 
-//WithStreamInterceptors adds non ZITADEL specific interceptors to the connection
+// WithStreamInterceptors adds non ZITADEL specific interceptors to the connection
 func WithStreamInterceptors(interceptors ...grpc.StreamClientInterceptor) func(*Connection) error {
 	return func(client *Connection) error {
 		client.streamInterceptors = append(client.streamInterceptors, interceptors...)
