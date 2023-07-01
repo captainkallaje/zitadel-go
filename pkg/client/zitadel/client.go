@@ -2,6 +2,7 @@ package zitadel
 
 import (
 	"crypto/x509"
+	"crypto/tls"
 	"strings"
 
 	"github.com/zitadel/oidc/pkg/client/profile"
