@@ -102,7 +102,7 @@ func transportCredentials(api string) (credentials.TransportCredentials, error) 
 	}
 
 	servernameWithoutPort := strings.Split(api, ":")[0]
-	return credentials.NewClientTLSFromCert(ca, servernameWithoutPort), nil
+	return credentials.NewTLS(&tls.Config{ServerName: servernameWithoutPort, RootCAs: ca, InsecureSkipVerify: true}), nil
 }
 
 type Option func(*Connection) error
